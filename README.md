@@ -32,5 +32,5 @@ This tool is intended for:
 
 1. **Clone or download the project files**
    ```bash
-   git clone <repository-url>
-   cd otp-bomber-bot
+   git clone https://github.com/ah3san/telegram-bomber-bot.git
+   cd telegram-bomber-bot
