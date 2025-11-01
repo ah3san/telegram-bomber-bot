@@ -54,36 +54,35 @@ def save_config():
         return False
 
 def setup_config():
-    """Interactive configuration setup"""
+    """Non-interactive config for cloud deployment"""
     print("\n" + "="*50)
-    print("🤖 OTP Bomber Bot - First Time Setup")
+    print("🤖 OTP Bomber Bot - Auto Setup (Render mode)")
     print("="*50)
-    
-    bot_token = input("\nEnter your Telegram Bot Token: ").strip()
+
+    import os
+    bot_token = os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("CHAT_ID")
+
     if not bot_token:
-        print("❌ Bot token is required!")
+        print("❌ BOT_TOKEN not found in environment variables!")
         return False
-    
-    chat_id = input("Enter your Chat ID (numeric): ").strip()
-    if not chat_id.isdigit():
-        print("❌ Chat ID must be numeric!")
+    if not chat_id or not chat_id.isdigit():
+        print("❌ CHAT_ID not found or invalid! It must be numeric.")
         return False
-    
+
     bot_config['bot_token'] = bot_token
     bot_config['admin_user_ids'] = [int(chat_id)]
     bot_config['setup_complete'] = True
-    
+
     if save_config():
         print("✅ Configuration saved successfully!")
-        print("\n📝 Configuration Summary:")
         print(f"   Bot Token: {bot_token[:10]}...{bot_token[-5:]}")
         print(f"   Admin Chat ID: {chat_id}")
-        print("\n🚀 Starting bot...")
+        print("🚀 Starting bot...")
         return True
     else:
         print("❌ Failed to save configuration!")
         return False
-
 # --- OTP Bombing Engine ---
 SLEEP_TIME = 1
 MAX_GLOBAL_REQUESTS = 60
