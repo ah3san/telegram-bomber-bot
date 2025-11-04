@@ -61,28 +61,23 @@ def setup_config():
 
     import os
     bot_token = os.getenv("BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID")
 
     if not bot_token:
         print("❌ BOT_TOKEN not found in environment variables!")
         return False
-    if not chat_id or not chat_id.isdigit():
-        print("❌ CHAT_ID not found or invalid! It must be numeric.")
-        return False
 
     bot_config['bot_token'] = bot_token
-    bot_config['admin_user_ids'] = [int(chat_id)]
     bot_config['setup_complete'] = True
 
     if save_config():
         print("✅ Configuration saved successfully!")
         print(f"   Bot Token: {bot_token[:10]}...{bot_token[-5:]}")
-        print(f"   Admin Chat ID: {chat_id}")
         print("🚀 Starting bot...")
         return True
     else:
         print("❌ Failed to save configuration!")
         return False
+
 # --- OTP Bombing Engine ---
 SLEEP_TIME = 1
 MAX_GLOBAL_REQUESTS = 60
@@ -282,18 +277,8 @@ Session ID: `{self.session_id}`
         self.send_update("🛑 Session stopped by user")
 
 # --- Telegram Bot Functions ---
-def is_admin(user_id):
-    """Check if user is admin"""
-    return user_id in bot_config.get('admin_user_ids', [])
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send welcome message"""
-    user_id = update.effective_user.id
-    
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Unauthorized access. This bot is for authorized users only.")
-        return
-        
     keyboard = [
         [InlineKeyboardButton("🚀 Start Bombing", callback_data="start_bombing")],
         [InlineKeyboardButton("📊 Active Sessions", callback_data="active_sessions")],
@@ -316,11 +301,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button callbacks"""
     query = update.callback_query
     await query.answer()
-    
-    user_id = query.from_user.id
-    if not is_admin(user_id):
-        await query.edit_message_text("❌ Unauthorized access.")
-        return
         
     if query.data == "start_bombing":
         await query.edit_message_text(
@@ -388,17 +368,15 @@ async def show_session_history(query):
 
 async def show_settings(query):
     """Show settings information"""
-    admin_ids = bot_config.get('admin_user_ids', [])
     settings_text = f"""
 ⚙️ **Bot Configuration**
 
 🤖 Bot Status: ✅ Running
-👥 Admin Users: {len(admin_ids)}
 🎯 Available APIs: {len(TARGET_APIS)}
 📈 Max Requests/Session: {MAX_GLOBAL_REQUESTS}
 
 *Configuration File:* `{CONFIG_FILE}`
-*Admin Chat IDs:* {', '.join(map(str, admin_ids))}
+*Bot Access:* Public
     """
     
     keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]]
@@ -475,11 +453,6 @@ def send_telegram_update(session_id, message):
 
 async def stop_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop specific bombing session"""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Unauthorized.")
-        return
-        
     if not context.args:
         await update.message.reply_text("❌ Usage: `/stop <session_id>`", parse_mode='Markdown')
         return
@@ -494,11 +467,6 @@ async def stop_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stop_all_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop all active sessions"""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Unauthorized.")
-        return
-        
     if not active_sessions:
         await update.message.reply_text("📭 No active sessions.")
         return
@@ -512,11 +480,6 @@ async def stop_all_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show bot statistics"""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Unauthorized.")
-        return
-        
     total_historical_requests = sum(h['total_requests'] for h in session_history.values())
     total_historical_success = sum(h['successful_requests'] for h in session_history.values())
     
@@ -535,21 +498,15 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show current configuration"""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Unauthorized.")
-        return
-        
-    admin_ids = bot_config.get('admin_user_ids', [])
     config_text = f"""
 ⚙️ **Current Configuration**
 
 🤖 Bot Token: `{bot_config.get('bot_token', '')[:10]}...{bot_config.get('bot_token', '')[-5:]}`
-👥 Admin Chat IDs: {', '.join(map(str, admin_ids))}
 📁 Config File: `{CONFIG_FILE}`
 ✅ Setup Complete: {bot_config.get('setup_complete', False)}
 
 *Bot is {'✅ RUNNING' if bot_config.get('setup_complete') else '❌ NOT CONFIGURED'}*
+*Access: Public*
     """
     
     await update.message.reply_text(config_text, parse_mode='Markdown')
@@ -577,11 +534,6 @@ async def stop_all_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop all sessions from callback"""
     query = update.callback_query
     await query.answer()
-    
-    user_id = query.from_user.id
-    if not is_admin(user_id):
-        await query.edit_message_text("❌ Unauthorized.")
-        return
         
     if not active_sessions:
         await query.edit_message_text("📭 No active sessions to stop.")
@@ -607,7 +559,7 @@ def main():
             return
     
     # Verify configuration
-    if not bot_config.get('bot_token') or not bot_config.get('admin_user_ids'):
+    if not bot_config.get('bot_token'):
         print("❌ Invalid configuration. Please run setup again.")
         return
     
